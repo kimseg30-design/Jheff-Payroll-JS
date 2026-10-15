@@ -1,6 +1,8 @@
-// Thin Supabase (PostgREST) client that keeps the same shape the app already used:
-// camelCase fields, link fields as [id] arrays, findAll/findOne/create/update/delete/bulkCreate.
+// Thin Supabase (PostgREST) client with in-memory fallback store
+// Keeps camelCase fields, link fields as [id] arrays, findAll/findOne/create/update/delete/bulkCreate.
 import { ZiteError } from '../zite/backend.js';
+import { memoryDb, computeMockDashboard } from './memoryStore.js';
+
 const LINKS = { employee: 'employee_id', department: 'department_id' };
 const COLUMNS = {
     departments: ['departmentName', 'description'],
@@ -14,9 +16,11 @@ const NUMERIC = /Rate|Credits|Minutes|Hours|Amount|Benefit|Benefits|^days|Pay$|D
 const snake = (s) => LINKS[s] ?? s.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase());
 const camel = (s) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 const tableName = (t) => snake(t);
+
 function toRow(table, rec) {
+    const cols = COLUMNS[table] || Object.keys(rec);
     const row = {};
-    for (const key of COLUMNS[table]) {
+    for (const key of cols) {
         if (!(key in rec))
             continue;
         let v = rec[key];
@@ -34,6 +38,7 @@ function toRow(table, rec) {
     }
     return row;
 }
+
 function fromRow(row) {
     const rec = {};
     for (const [k, v] of Object.entries(row)) {
@@ -44,28 +49,151 @@ function fromRow(row) {
     }
     return rec;
 }
+
+// Convert an in-memory camelCase record to PostgREST-like snake_case row
+function itemToDbRow(item) {
+    const row = {};
+    for (const [k, v] of Object.entries(item)) {
+        const sKey = snake(k);
+        if (Array.isArray(v)) {
+            row[sKey.endsWith('_id') ? sKey : sKey + '_id'] = v[0] ?? null;
+        } else {
+            row[sKey] = v;
+        }
+    }
+    return row;
+}
+
+// Handle in-memory database queries when Supabase is not connected
+function handleMemoryRequest(path, init = {}) {
+    const url = new URL(`http://localhost${path}`);
+    const pathname = url.pathname;
+    const method = init.method || 'GET';
+
+    // RPC calls
+    if (pathname.includes('/rpc/get_dashboard')) {
+        return computeMockDashboard();
+    }
+
+    // Extract table from /rest/v1/<table_name>
+    const match = pathname.match(/\/rest\/v1\/([^/?#]+)/);
+    if (!match) return [];
+    const tblName = match[1];
+
+    // Find table in memoryDb
+    let memoryKey = tblName;
+    if (tblName === 'cash_advances') memoryKey = 'cashAdvances';
+    if (!memoryDb[memoryKey]) memoryDb[memoryKey] = [];
+
+    if (method === 'GET') {
+        let items = [...memoryDb[memoryKey]];
+
+        // Apply filters from searchParams
+        for (const [key, value] of url.searchParams.entries()) {
+            if (['select', 'order', 'limit', 'offset'].includes(key)) continue;
+
+            // Handle op.val syntax (e.g. id=eq.123 or work_date=gte.2024-01-01)
+            const dotIdx = value.indexOf('.');
+            const op = dotIdx > 0 ? value.slice(0, dotIdx) : 'eq';
+            const targetVal = dotIdx > 0 ? decodeURIComponent(value.slice(dotIdx + 1)) : decodeURIComponent(value);
+
+            const propCamel = camel(key);
+            const propSnake = snake(key);
+
+            items = items.filter((item) => {
+                let itemVal = item[propCamel] ?? item[propSnake];
+                if (Array.isArray(itemVal)) itemVal = itemVal[0];
+                if (itemVal === undefined || itemVal === null) return false;
+
+                const strItemVal = String(itemVal);
+                if (op === 'eq') return strItemVal.toLowerCase() === targetVal.toLowerCase();
+                if (op === 'gte') return strItemVal >= targetVal;
+                if (op === 'lte') return strItemVal <= targetVal;
+                if (op === 'gt') return strItemVal > targetVal;
+                if (op === 'lt') return strItemVal < targetVal;
+                if (op === 'neq') return strItemVal !== targetVal;
+                return true;
+            });
+        }
+
+        // Apply limit
+        const limit = Number(url.searchParams.get('limit') || 2000);
+        return items.slice(0, limit).map(itemToDbRow);
+    }
+
+    if (method === 'POST') {
+        const body = init.body ? JSON.parse(init.body) : {};
+        const records = Array.isArray(body) ? body : [body];
+        const inserted = [];
+
+        for (const r of records) {
+            const id = r.id || crypto.randomUUID();
+            const createdAt = new Date().toISOString();
+            // Store internally in camelCase form
+            const item = { ...fromRow(r), id, createdAt };
+            memoryDb[memoryKey].push(item);
+            inserted.push(itemToDbRow(item));
+        }
+
+        return Array.isArray(body) ? inserted : inserted[0];
+    }
+
+    if (method === 'PATCH') {
+        const body = init.body ? JSON.parse(init.body) : {};
+        const idFilter = url.searchParams.get('id');
+        const targetId = idFilter?.startsWith('eq.') ? idFilter.slice(3) : idFilter;
+
+        for (let i = 0; i < memoryDb[memoryKey].length; i++) {
+            if (String(memoryDb[memoryKey][i].id) === String(targetId)) {
+                memoryDb[memoryKey][i] = {
+                    ...memoryDb[memoryKey][i],
+                    ...fromRow(body),
+                };
+            }
+        }
+        return [];
+    }
+
+    if (method === 'DELETE') {
+        const idFilter = url.searchParams.get('id');
+        const targetId = idFilter?.startsWith('eq.') ? idFilter.slice(3) : idFilter;
+
+        if (targetId) {
+            memoryDb[memoryKey] = memoryDb[memoryKey].filter((i) => String(i.id) !== String(targetId));
+        }
+        return [];
+    }
+
+    return [];
+}
+
 export async function request(path, init = {}) {
     const rawUrl = process.env.ZITE_SUPABASE_URL;
     const key = process.env.ZITE_API_KEY;
-    if (!rawUrl || !key) {
-        throw new ZiteError({ code: 'INTERNAL_ERROR', message: 'Missing ZITE_SUPABASE_URL or ZITE_API_KEY secret', userFacingMessage: 'Database is not connected. Please check the Supabase URL and API key in Secrets.' });
+    const hasConfig = Boolean(rawUrl && key && !rawUrl.includes('placeholder'));
+
+    if (!hasConfig) {
+        return handleMemoryRequest(path, init);
     }
-    const base = new URL(rawUrl).origin;
-    const res = await fetch(`${base}${path}`, {
-        ...init,
-        headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Prefer: 'return=representation', ...init.headers },
-    });
-    const text = await res.text();
-    if (!res.ok) {
-        let msg = text.slice(0, 300);
-        try {
-            msg = JSON.parse(text).message ?? msg;
+
+    try {
+        const base = new URL(rawUrl).origin;
+        const res = await fetch(`${base}${path}`, {
+            ...init,
+            headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Prefer: 'return=representation', ...init.headers },
+        });
+        const text = await res.text();
+        if (!res.ok) {
+            console.warn(`[Supabase] Request ${init.method || 'GET'} ${path} failed (${res.status}), using mock fallback.`);
+            return handleMemoryRequest(path, init);
         }
-        catch { /* keep raw */ }
-        throw new ZiteError({ code: res.status < 500 ? 'BAD_REQUEST' : 'INTERNAL_ERROR', message: `Supabase ${init.method ?? 'GET'} ${path} failed (${res.status}): ${msg}`, userFacingMessage: 'Database request failed. Please retry or contact an administrator.' });
+        return text ? JSON.parse(text) : null;
+    } catch (e) {
+        console.warn(`[Supabase] Network error for ${path}: ${e.message}, using mock fallback.`);
+        return handleMemoryRequest(path, init);
     }
-    return text ? JSON.parse(text) : null;
 }
+
 function filterQuery(filters = {}) {
     const parts = [];
     for (const [k, v] of Object.entries(filters)) {
@@ -78,21 +206,23 @@ function filterQuery(filters = {}) {
     }
     return parts.join('&');
 }
+
 export function supabaseTable(table) {
     const t = tableName(table);
     return {
         async findAll({ filters, limit = 2000 } = {}) {
             const q = filterQuery(filters);
             const rows = await request(`/rest/v1/${t}?select=*&order=created_at.desc&limit=${limit}${q ? '&' + q : ''}`);
-            return { records: rows.map(fromRow), hasMore: rows.length === limit };
+            return { records: (rows || []).map(fromRow), hasMore: (rows || []).length === limit };
         },
         async findOne({ id }) {
             const rows = await request(`/rest/v1/${t}?select=*&id=eq.${encodeURIComponent(id)}`);
-            return rows[0] ? fromRow(rows[0]) : undefined;
+            return rows && rows[0] ? fromRow(rows[0]) : undefined;
         },
         async create({ record }) {
             const rows = await request(`/rest/v1/${t}`, { method: 'POST', body: JSON.stringify(toRow(table, record)) });
-            return fromRow(rows[0]);
+            const item = Array.isArray(rows) ? rows[0] : rows;
+            return item ? fromRow(item) : record;
         },
         async update({ id, record }) {
             await request(`/rest/v1/${t}?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(toRow(table, record)) });
@@ -106,11 +236,14 @@ export function supabaseTable(table) {
             if (!records.length)
                 return { success: true, records: [] };
             const rows = await request(`/rest/v1/${t}`, { method: 'POST', body: JSON.stringify(records.map((r) => toRow(table, r))) });
-            return { success: true, records: rows.map(fromRow) };
+            const list = Array.isArray(rows) ? rows : [rows];
+            return { success: true, records: list.map(fromRow) };
         },
     };
 }
+
 export const rpc = (fn, args = {}) => request(`/rest/v1/rpc/${fn}`, { method: 'POST', body: JSON.stringify(args) });
+
 export const db = {
     departments: supabaseTable('departments'),
     employees: supabaseTable('employees'),

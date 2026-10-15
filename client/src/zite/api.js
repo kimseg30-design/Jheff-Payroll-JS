@@ -1,10 +1,23 @@
 // Calls the Node.js backend at /api/<name> with the signed-in user's token.
-import { supabase } from './supabaseClient';
+import { supabase, isSupabaseConfigured } from './supabaseClient';
 
 async function call(name, input) {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  const res = await fetch(`/api/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(input ?? {}) });
+  let token = 'demo-token';
+  if (isSupabaseConfigured) {
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (data?.session?.access_token) {
+        token = data.session.access_token;
+      }
+    } catch {
+      // fallback to demo token
+    }
+  }
+  const res = await fetch(`/api/${name}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input ?? {}),
+  });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
   return body;

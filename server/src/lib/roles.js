@@ -9,7 +9,7 @@ function decodeRole(raw) {
     return { role, permissions: role === 'Editor' ? [...new Set(valid)] : [] };
 }
 // Accounts that are always Admin, regardless of their stored role.
-const DEFAULT_ADMIN_EMAILS = ['kimsegarra516@gmail.com'];
+const DEFAULT_ADMIN_EMAILS = ['kimsegarra516@gmail.com', 'kimsegarra4@gmail.com'];
 export async function getRole(user) {
     if (DEFAULT_ADMIN_EMAILS.includes(user.email.trim().toLowerCase()))
         return 'Admin';

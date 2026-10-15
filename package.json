@@ -1,11 +1,13 @@
 {
   "name": "sahod",
   "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
   "scripts": {
-    "install:all": "npm install --prefix client && npm install --prefix server",
-    "dev:client": "npm run dev --prefix client",
-    "dev:server": "npm run dev --prefix server",
-    "build": "npm run build --prefix client",
-    "start": "npm start --prefix server"
+    "dev": "npm run build --workspace=client && node server/src/index.js",
+    "build": "npm run build --workspace=client",
+    "start": "node server/src/index.js"
   }
 }

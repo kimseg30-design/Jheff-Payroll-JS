@@ -1,6 +1,18 @@
-// Sign-in via Supabase Auth (email link + Google). Same API the pages already use.
+// Sign-in via Supabase Auth (email link + Google) with local dev fallback.
 import { useEffect, useState } from 'react';
-import { supabase } from './supabaseClient';
+import { supabase, isSupabaseConfigured } from './supabaseClient';
+
+const MOCK_USER = {
+  id: 'usr_admin',
+  email: 'kimsegarra4@gmail.com',
+  name: 'Kim Segarra',
+  firstName: 'Kim',
+  lastName: 'Segarra',
+  image: null,
+  emailVerified: true,
+  createdAt: new Date('2023-01-01'),
+  updatedAt: new Date(),
+};
 
 function toUser(u) {
   if (!u) return null;
@@ -11,12 +23,22 @@ function toUser(u) {
 }
 
 export function useAuth() {
-  const [state, setState] = useState({ user: null, isLoading: true });
+  const [state, setState] = useState(() => {
+    if (!isSupabaseConfigured) {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('sahod_mock_user') : null;
+      if (stored === 'guest') return { user: null, isLoading: false };
+      return { user: MOCK_USER, isLoading: false };
+    }
+    return { user: null, isLoading: true };
+  });
+
   useEffect(() => {
+    if (!isSupabaseConfigured) return;
     supabase.auth.getSession().then(({ data }) => setState({ user: toUser(data.session?.user), isLoading: false }));
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => setState({ user: toUser(session?.user), isLoading: false }));
     return () => sub.subscription.unsubscribe();
   }, []);
+
   return state;
 }
 
@@ -26,10 +48,22 @@ export function loginWithRedirect({ redirectUrl } = {}) {
 }
 
 export async function logout() {
+  if (!isSupabaseConfigured) {
+    if (typeof window !== 'undefined') localStorage.setItem('sahod_mock_user', 'guest');
+    window.location.assign('/login');
+    return;
+  }
   await supabase.auth.signOut();
   window.location.assign('/');
 }
 
+export function loginAsAdmin() {
+  if (typeof window !== 'undefined') localStorage.removeItem('sahod_mock_user');
+  window.location.assign('/');
+}
+
 export async function updateProfile(data) {
-  await supabase.auth.updateUser({ data: { full_name: data.name, ...data } });
+  if (isSupabaseConfigured) {
+    await supabase.auth.updateUser({ data: { full_name: data.name, ...data } });
+  }
 }
