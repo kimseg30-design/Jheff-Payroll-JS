@@ -10,7 +10,7 @@ export default createEndpoint({
     inputSchema: z.object({
         employeeIds: z.array(z.string().uuid()).min(1).max(100),
         workDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        status: z.enum(['Present', 'Halfday', 'Absent', 'Paid Leave']),
+        status: z.enum(['Present', 'Halfday', 'Absent', 'Paid Leave', 'Rest Day']),
         dayType: z.enum(['Regular Day', 'Regular Holiday', 'Special Non-Working', 'Rest Day']),
         timeIn: z.string().optional(),
         timeOut: z.string().optional(),
