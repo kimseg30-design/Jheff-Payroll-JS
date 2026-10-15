@@ -66,7 +66,7 @@ export default function BulkAttendanceDialog({ open, onOpenChange, employees, la
         </DialogHeader>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5"><Label className="text-xs font-semibold">Work Date</Label><DatePicker value={date} onChange={setDate}/></div>
-          <div className="space-y-1.5"><Label className="text-xs font-semibold">Status</Label><Sel value={status} onChange={(v) => setStatus(v)} options={['Present', 'Halfday', 'Absent', 'Paid Leave']}/></div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold">Status</Label><Sel value={status} onChange={(v) => setStatus(v)} options={['Present', 'Halfday', 'Absent', 'Paid Leave', 'Rest Day']}/></div>
           <div className="space-y-1.5"><Label className="text-xs font-semibold">Day Type</Label><Sel value={dayType} onChange={(v) => setDayType(v)} options={['Regular Day', 'Regular Holiday', 'Special Non-Working', 'Rest Day']}/></div>
           {['Present', 'Halfday'].includes(status) && (<div className="grid grid-cols-2 gap-2">
               <div className="space-y-1.5"><Label className="text-xs font-semibold">Time In</Label><Input type="time" value={timeIn} onChange={(e) => setTimeIn(e.target.value)}/></div>

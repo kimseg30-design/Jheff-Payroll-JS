@@ -1,5 +1,6 @@
 // Thin Supabase (PostgREST) client with in-memory fallback store
 // Keeps camelCase fields, link fields as [id] arrays, findAll/findOne/create/update/delete/bulkCreate.
+import './loadEnv.js';
 import { ZiteError } from '../zite/backend.js';
 import { memoryDb, computeMockDashboard } from './memoryStore.js';
 
@@ -168,8 +169,8 @@ function handleMemoryRequest(path, init = {}) {
 }
 
 export async function request(path, init = {}) {
-    const rawUrl = process.env.ZITE_SUPABASE_URL || process.env.SUPABASE_URL;
-    const key = process.env.ZITE_API_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+    const rawUrl = process.env.SUPABASE_URL || process.env.ZITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    const key = process.env.SUPABASE_SECRET_KEY || process.env.ZITE_API_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
     const hasConfig = Boolean(rawUrl && key && !rawUrl.includes('placeholder'));
 
     if (!hasConfig) {

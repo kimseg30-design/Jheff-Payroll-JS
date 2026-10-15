@@ -34,7 +34,7 @@ create table if not exists attendance (
   employee_id uuid references employees(id) on delete cascade,
   time_in text,
   time_out text,
-  status text check (status in ('Present','Halfday','Absent','Paid Leave')),
+  status text check (status in ('Present','Halfday','Absent','Paid Leave','Rest Day')),
   day_type text check (day_type in ('Regular Day','Regular Holiday','Special Non-Working','Rest Day')),
   late_minutes numeric(8,0) default 0,
   overtime_hours numeric(6,2) default 0,
@@ -64,6 +64,10 @@ begin
   if not exists (select 1 from pg_constraint where conname = 'attendance_other_benefit_nonnegative') then
     alter table attendance add constraint attendance_other_benefit_nonnegative check (other_benefit >= 0);
   end if;
+  alter table public.attendance drop constraint if exists attendance_status_check;
+  alter table public.attendance
+    add constraint attendance_status_check
+    check (status in ('Present','Halfday','Absent','Paid Leave','Rest Day'));
 end $$;
 
 create index if not exists attendance_work_date_idx on attendance(work_date);
