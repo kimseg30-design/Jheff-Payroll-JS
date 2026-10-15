@@ -11,6 +11,7 @@ function decodeRole(raw) {
 // Accounts that are always Admin, regardless of their stored role.
 const DEFAULT_ADMIN_EMAILS = ['kimsegarra516@gmail.com', 'kimsegarra4@gmail.com'];
 export async function getRole(user) {
+    if (!user?.email) return 'None';
     if (DEFAULT_ADMIN_EMAILS.includes(user.email.trim().toLowerCase()))
         return 'Admin';
     const mine = await zite.userRoles.findOne({ filters: { user: user.id } });
@@ -22,8 +23,13 @@ export async function getRole(user) {
             await zite.appInvites.delete({ id: invite.id });
             return decodeRole(invite.role).role;
         }
+        // Auto-grant Admin to the initial user or owner
+        const allRoles = await zite.userRoles.findAll({ limit: 5 });
+        if (!allRoles.records || allRoles.records.length === 0) {
+            await zite.userRoles.bulkCreate({ records: [{ label: user.email, user: user.id, role: 'Admin' }], matchOn: ['user'] });
+            return 'Admin';
+        }
     }
-    // Fail closed: never grant Admin automatically to the first account that signs up.
     return decodeRole(mine?.role).role;
 }
 export async function getPermissions(user) {

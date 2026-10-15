@@ -7,7 +7,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
+  envDir: path.resolve(__dirname, '..'),
+  envPrefix: ['VITE_', 'SUPABASE_'],
   resolve: { alias: { '@': path.resolve(__dirname, 'src') } },
-  server: { port: 5173, proxy: { '/api': 'http://localhost:3001' } },
+  server: { port: 5173, proxy: { '/api': 'http://localhost:3000' } },
   build: { outDir: 'dist' },
 });

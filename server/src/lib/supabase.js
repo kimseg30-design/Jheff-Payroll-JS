@@ -168,8 +168,8 @@ function handleMemoryRequest(path, init = {}) {
 }
 
 export async function request(path, init = {}) {
-    const rawUrl = process.env.ZITE_SUPABASE_URL;
-    const key = process.env.ZITE_API_KEY;
+    const rawUrl = process.env.ZITE_SUPABASE_URL || process.env.SUPABASE_URL;
+    const key = process.env.ZITE_API_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
     const hasConfig = Boolean(rawUrl && key && !rawUrl.includes('placeholder'));
 
     if (!hasConfig) {
@@ -180,6 +180,7 @@ export async function request(path, init = {}) {
         const base = new URL(rawUrl).origin;
         const res = await fetch(`${base}${path}`, {
             ...init,
+            signal: AbortSignal.timeout(3500),
             headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Prefer: 'return=representation', ...init.headers },
         });
         const text = await res.text();

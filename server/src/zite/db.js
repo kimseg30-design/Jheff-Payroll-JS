@@ -4,14 +4,17 @@
 import { createClient } from '@supabase/supabase-js';
 import { memoryDb } from '../lib/memoryStore.js';
 
+const supabaseUrl = process.env.ZITE_SUPABASE_URL || process.env.SUPABASE_URL;
+const supabaseKey = process.env.ZITE_API_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+
 const isConfigured = Boolean(
-  process.env.ZITE_SUPABASE_URL &&
-  process.env.ZITE_API_KEY &&
-  !process.env.ZITE_SUPABASE_URL.includes('placeholder')
+  supabaseUrl &&
+  supabaseKey &&
+  !supabaseUrl.includes('placeholder')
 );
 
 export const admin = isConfigured
-  ? createClient(process.env.ZITE_SUPABASE_URL, process.env.ZITE_API_KEY, { auth: { persistSession: false } })
+  ? createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } })
   : null;
 
 const COL = { user: 'user_id' };

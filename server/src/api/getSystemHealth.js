@@ -16,21 +16,26 @@ export default createEndpoint({
     }),
     execute: withLog('getSystemHealth', async ({ context }) => {
         await requireAdmin(context.user, 'read');
-        const base = new URL(process.env.ZITE_SUPABASE_URL).origin;
-        const key = process.env.ZITE_API_KEY;
+        const rawUrl = process.env.ZITE_SUPABASE_URL || process.env.SUPABASE_URL;
+        const key = process.env.ZITE_API_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
         let database;
         const started = Date.now();
-        try {
-            const res = await fetch(`${base}/rest/v1/departments?select=id&limit=1`, { headers: { apikey: key, Authorization: `Bearer ${key}` } });
-            database = res.ok
-                ? { status: 'ok', message: `Connected to Supabase (${Date.now() - started} ms)` }
-                : { status: 'error', message: `Supabase responded with error ${res.status}` };
-        }
-        catch {
-            database = { status: 'error', message: 'Could not reach Supabase' };
+        if (!rawUrl || !key) {
+            database = { status: 'warning', message: 'Running with in-memory database fallback (Supabase URL/Key not configured)' };
+        } else {
+            try {
+                const base = new URL(rawUrl).origin;
+                const res = await fetch(`${base}/rest/v1/departments?select=id&limit=1`, { headers: { apikey: key, Authorization: `Bearer ${key}` } });
+                database = res.ok
+                    ? { status: 'ok', message: `Connected to Supabase (${Date.now() - started} ms)` }
+                    : { status: 'error', message: `Supabase responded with error ${res.status}` };
+            }
+            catch {
+                database = { status: 'error', message: 'Could not reach Supabase' };
+            }
         }
         let security;
-        const anonKey = process.env.ZITE_SUPABASE_ANON_KEY;
+        const anonKey = process.env.ZITE_SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
         if (!anonKey) {
             security = { status: 'warning', message: 'Not tested — add the Supabase public (anon) key as the ZITE_SUPABASE_ANON_KEY secret to verify outsiders are blocked.' };
         }
