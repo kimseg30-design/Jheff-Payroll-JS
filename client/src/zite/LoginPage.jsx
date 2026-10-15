@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/shared/ui/dialog';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { loginAsAdmin } from './auth';
-import { ShieldCheck, Mail, Lock, KeyRound, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, Mail, Lock, AlertCircle, CheckCircle2, ExternalLink, Copy, Check } from 'lucide-react';
 
 export default function LoginPage() {
   const [mode, setMode] = useState('password'); // 'password' | 'magic-link'
@@ -14,9 +15,26 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [googleModalOpen, setGoogleModalOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const redirect = new URLSearchParams(window.location.search).get('redirect') || '/';
-  const redirectTo = window.location.origin + redirect;
+  const callbackUrl = `${window.location.origin}/auth/callback`;
+  const supabaseCallbackUrl = 'https://xurvumenaszahorrxhxf.supabase.co/auth/v1/callback';
+
+  // Listen for popup OAuth success
+  useEffect(() => {
+    const handleMessage = async (event) => {
+      if (event.data?.type === 'SUPABASE_OAUTH_SUCCESS') {
+        const { data } = await supabase.auth.getSession();
+        if (data?.session) {
+          window.location.assign(redirect);
+        }
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [redirect]);
 
   const handlePasswordAuth = async (e) => {
     e.preventDefault();
@@ -29,13 +47,13 @@ export default function LoginPage() {
         const { data, error: signUpErr } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: redirectTo },
+          options: { emailRedirectTo: callbackUrl },
         });
         if (signUpErr) throw signUpErr;
         if (data?.session) {
           window.location.assign(redirect);
         } else {
-          setMessage('Account created! If email confirmation is enabled on your Supabase project, check your inbox.');
+          setMessage('Account created! If email confirmation is enabled, please check your inbox.');
         }
       } else {
         const { data, error: signInErr } = await supabase.auth.signInWithPassword({
@@ -64,7 +82,7 @@ export default function LoginPage() {
       const { error: otpErr } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: redirectTo,
+          emailRedirectTo: callbackUrl,
           shouldCreateUser: true,
         },
       });
@@ -79,15 +97,62 @@ export default function LoginPage() {
 
   const handleGoogle = async () => {
     setError('');
+    setMessage('');
+    setLoading(true);
+
     try {
-      const { error: oauthErr } = await supabase.auth.signInWithOAuth({
+      // 1. Request OAuth authorization URL with popup flow (skipBrowserRedirect: true)
+      const { data, error: oauthErr } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo },
+        options: {
+          redirectTo: callbackUrl,
+          skipBrowserRedirect: true,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        },
       });
-      if (oauthErr) throw oauthErr;
+
+      if (oauthErr) {
+        // If Google provider is not yet enabled in Supabase console
+        if (
+          oauthErr.message?.toLowerCase().includes('not enabled') ||
+          oauthErr.message?.toLowerCase().includes('unsupported provider')
+        ) {
+          setGoogleModalOpen(true);
+          return;
+        }
+        throw oauthErr;
+      }
+
+      if (data?.url) {
+        // Open OAuth provider directly in popup window
+        const width = 600;
+        const height = 700;
+        const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+        const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+        const popup = window.open(
+          data.url,
+          'google_auth_popup',
+          `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes`
+        );
+
+        if (!popup) {
+          setError('Popup was blocked by your browser. Please allow popups for this site to complete Google sign-in.');
+        }
+      }
     } catch (err) {
-      setError(err.message || 'Google authentication is not configured in your Supabase dashboard.');
+      setError(err.message || 'Google authentication error. Try signing in as Administrator below.');
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -99,30 +164,54 @@ export default function LoginPage() {
           </div>
           <h1 className="text-2xl font-bold tracking-tight">Sahod — PH Payroll</h1>
           <p className="text-sm text-muted-foreground">
-            Sign in to manage employees, attendance, and payroll.
+            Sign in with your Google Account or Supabase credentials.
           </p>
         </div>
 
-        {/* Quick Instant Sign-In as Admin */}
-        <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-primary">
-              Instant Access
-            </span>
-            <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full font-medium">
-              Admin
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Continue immediately as primary system administrator (Kim Segarra).
-          </p>
+        {/* Primary Google Sign-In Button */}
+        <div className="space-y-3">
           <Button
             type="button"
-            className="w-full font-semibold shadow-sm"
-            onClick={loginAsAdmin}
+            variant="outline"
+            className="w-full flex items-center justify-center gap-2.5 h-11 border-slate-300 hover:bg-slate-50 font-medium text-sm shadow-sm"
+            onClick={handleGoogle}
+            disabled={loading}
           >
-            Continue as Administrator
+            <svg className="h-4 w-4" viewBox="0 0 24 24">
+              <path
+                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                fill="#4285F4"
+              />
+              <path
+                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                fill="#34A853"
+              />
+              <path
+                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                fill="#FBBC05"
+              />
+              <path
+                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                fill="#EA4335"
+              />
+            </svg>
+            Continue with Google
           </Button>
+
+          {/* Instant Admin Login Shortcut */}
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-primary">Pre-approved Administrator</span>
+              <span className="bg-primary/20 text-primary px-2 py-0.5 rounded-full font-medium">kimsegarra4@gmail.com</span>
+            </div>
+            <Button
+              type="button"
+              className="w-full h-9 font-medium shadow-sm"
+              onClick={loginAsAdmin}
+            >
+              Sign in as Kim Segarra
+            </Button>
+          </div>
         </div>
 
         <div className="relative">
@@ -131,7 +220,7 @@ export default function LoginPage() {
           </div>
           <div className="relative flex justify-center text-xs uppercase">
             <span className="bg-card px-3 text-muted-foreground font-medium">
-              Or sign in with Supabase
+              Or use Email
             </span>
           </div>
         </div>
@@ -158,7 +247,7 @@ export default function LoginPage() {
             }`}
             onClick={() => { setMode('magic-link'); setError(''); setMessage(''); }}
           >
-            Magic Link (OTP)
+            Magic Link
           </button>
         </div>
 
@@ -268,16 +357,66 @@ export default function LoginPage() {
             </Button>
           </form>
         )}
-
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full text-xs"
-          onClick={handleGoogle}
-        >
-          Continue with Google
-        </Button>
       </div>
+
+      {/* Google Setup Guide Dialog when not enabled in Supabase */}
+      <Dialog open={googleModalOpen} onOpenChange={setGoogleModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Enable Google in Supabase</DialogTitle>
+            <DialogDescription>
+              Google OAuth provider is not yet turned on in your Supabase project. Follow these quick steps:
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3.5 text-xs text-slate-700">
+            <div className="rounded-lg bg-slate-100 p-3 space-y-1">
+              <span className="font-semibold text-slate-900 block">1. Open Supabase Auth Providers</span>
+              <a
+                href="https://supabase.com/dashboard/project/xurvumenaszahorrxhxf/auth/providers"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-primary hover:underline font-medium"
+              >
+                Go to Supabase Project Providers <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+
+            <div className="rounded-lg bg-slate-100 p-3 space-y-1.5">
+              <span className="font-semibold text-slate-900 block">2. Copy Supabase Callback URL</span>
+              <p className="text-muted-foreground">Paste this into your Google Cloud Console Authorized redirect URIs:</p>
+              <div className="flex items-center gap-1.5">
+                <code className="flex-1 bg-white p-1.5 rounded border text-[11px] truncate">
+                  {supabaseCallbackUrl}
+                </code>
+                <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => copyToClipboard(supabaseCallbackUrl)}>
+                  {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-slate-100 p-3 space-y-1">
+              <span className="font-semibold text-slate-900 block">3. Toggle Google "Enabled"</span>
+              <p className="text-muted-foreground">
+                In Supabase, toggle Google ON, paste your Google Client ID and Secret, and click Save.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="flex sm:justify-between items-center pt-2">
+            <Button
+              type="button"
+              className="w-full sm:w-auto"
+              onClick={() => {
+                setGoogleModalOpen(false);
+                loginAsAdmin();
+              }}
+            >
+              Sign In as Admin (Kim Segarra)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
