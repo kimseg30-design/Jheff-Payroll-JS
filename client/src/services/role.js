@@ -1,11 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { getMyRole } from '@/zite/api';
-import { useAuth } from '@/zite/auth';
 export function useRole() {
-    const { user } = useAuth();
     const { data, isLoading } = useQuery({ queryKey: ['myRole'], queryFn: () => getMyRole({}), staleTime: 5 * 60_000 });
-    const isDefaultAdmin = user?.email?.trim().toLowerCase() === 'kimsegarra4@gmail.com';
-    const role = isDefaultAdmin ? 'Admin' : (data?.role ?? 'None');
+    const role = data?.role ?? 'None';
     const permissions = data?.permissions ?? [];
     return {
         role,
