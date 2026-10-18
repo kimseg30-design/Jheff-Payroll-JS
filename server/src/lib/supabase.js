@@ -7,13 +7,13 @@ import { memoryDb, computeMockDashboard } from './memoryStore.js';
 const LINKS = { employee: 'employee_id', department: 'department_id' };
 const COLUMNS = {
     departments: ['departmentName', 'description'],
-    employees: ['fullName', 'employeeNo', 'position', 'department', 'dailyRate', 'employmentStatus', 'dateHired', 'tin', 'sssNo', 'philHealthNo', 'pagIbigNo', 'leaveCredits', 'active'],
+    employees: ['fullName', 'employeeNo', 'position', 'department', 'dailyRate', 'employmentStatus', 'dateHired', 'tin', 'sssNo', 'philHealthNo', 'pagIbigNo', 'leaveCredits', 'active', 'noOfDaysWork'],
     attendance: ['workDate', 'employee', 'timeIn', 'timeOut', 'status', 'dayType', 'lateMinutes', 'overtimeHours', 'overtimePayMode', 'overtimeAmount', 'otherBenefit', 'nightDiffHours', 'remarks'],
     leaves: ['leaveReason', 'employee', 'leaveType', 'startDate', 'endDate', 'days', 'status'],
     cashAdvances: ['description', 'employee', 'type', 'amount', 'deductionPerCutoff', 'balance', 'dateGranted', 'status'],
-    payslips: ['periodLabel', 'employee', 'periodStart', 'periodEnd', 'daysWorked', 'basicPay', 'overtimePay', 'otherBenefits', 'nightDiffPay', 'holidayPay', 'lateDeduction', 'grossPay', 'sss', 'philHealth', 'pagIbig', 'withholdingTax', 'loanDeductions', 'cashAdvanceDeduction', 'sinkingContributionDeduction', 'netPay', 'status', 'deductionDetails'],
+    payslips: ['periodLabel', 'employee', 'periodStart', 'periodEnd', 'daysWorked', 'daysAbsent', 'basicPay', 'overtimePay', 'otherBenefits', 'nightDiffPay', 'holidayPay', 'lateDeduction', 'grossPay', 'sss', 'philHealth', 'pagIbig', 'withholdingTax', 'loanDeductions', 'cashAdvanceDeduction', 'sinkingContributionDeduction', 'netPay', 'status', 'deductionDetails'],
 };
-const NUMERIC = /Rate|Credits|Minutes|Hours|Amount|Benefit|Benefits|^days|Pay$|Deduction$|^amount$|^balance$|^sss$|^philHealth$|^pagIbig$|Tax$|Deductions$|PerCutoff$/;
+const NUMERIC = /Rate|Credits|Minutes|Hours|Amount|Benefit|Benefits|^days|Days|Pay$|Deduction$|^amount$|^balance$|^sss$|^philHealth$|^pagIbig$|Tax$|Deductions$|PerCutoff$/;
 const snake = (s) => LINKS[s] ?? s.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase());
 const camel = (s) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 const tableName = (t) => snake(t);

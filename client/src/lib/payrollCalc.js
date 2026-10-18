@@ -48,7 +48,7 @@ const DAY_PREMIUM = {
 const ALL = { sss: true, philHealth: true, pagIbig: true, tax: true };
 export function computePayslip(dailyRate, logs, loanDeductions, frequency = 'semi-monthly', benefits = ALL) {
     const hourly = dailyRate / 8;
-    let daysWorked = 0, basic = 0, ot = 0, nd = 0, holiday = 0, late = 0, otherBenefits = 0;
+    let daysWorked = 0, daysAbsent = 0, basic = 0, ot = 0, nd = 0, holiday = 0, late = 0, otherBenefits = 0;
     for (const l of logs) {
         const premium = DAY_PREMIUM[l.dayType] ?? 0;
         const mult = 1 + premium;
@@ -69,6 +69,9 @@ export function computePayslip(dailyRate, logs, loanDeductions, frequency = 'sem
             daysWorked += 1;
             basic += dailyRate;
         }
+        else if (l.status === 'Absent') {
+            daysAbsent += 1;
+        }
         else if (l.dayType === 'Regular Holiday') {
             // Unworked regular holiday is still paid at 100%
             holiday += dailyRate;
@@ -86,6 +89,7 @@ export function computePayslip(dailyRate, logs, loanDeductions, frequency = 'sem
     const net = r2(gross - sss - philHealth - pagIbig - tax - loanDeductions);
     return {
         daysWorked,
+        daysAbsent,
         basicPay: r2(basic),
         overtimePay: r2(ot),
         otherBenefits: r2(otherBenefits),

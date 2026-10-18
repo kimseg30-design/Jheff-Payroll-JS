@@ -45,6 +45,7 @@ export default createEndpoint({
             const delta = r2(fresh.grossPay - oldGross);
             await db.payslips.update({ id: slip.id, record: {
                     daysWorked: fresh.daysWorked,
+                    daysAbsent: fresh.daysAbsent,
                     basicPay: fresh.basicPay,
                     overtimePay: fresh.overtimePay,
                     otherBenefits: fresh.otherBenefits,

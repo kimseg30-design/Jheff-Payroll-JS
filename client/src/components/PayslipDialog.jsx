@@ -51,6 +51,9 @@ export default function PayslipDialog({ slip, employee, onClose }) {
             <div>
               <h4 className="mb-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Earnings</h4>
               <div className="flex justify-between py-1.5 text-sm"><span className="text-muted-foreground">Days worked</span><span className="num">{s.daysWorked ?? 0}</span></div>
+              {Number(s.daysAbsent ?? 0) > 0 && (
+                <div className="flex justify-between py-1.5 text-sm"><span className="text-muted-foreground">Days absent</span><span className="num text-destructive font-medium">{s.daysAbsent}</span></div>
+              )}
               <Line label="Basic pay" value={s.basicPay}/>
               <Line label="Overtime" value={s.overtimePay}/>
               <Line label="Other benefits" value={s.otherBenefits}/>

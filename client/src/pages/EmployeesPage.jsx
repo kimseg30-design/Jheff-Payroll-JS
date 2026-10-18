@@ -3,6 +3,7 @@ import CrudPage from '../components/CrudPage';
 import StatusBadge from '../components/StatusBadge';
 import { useNameMap } from '../services/records';
 import { fmtDate, firstId, peso } from '../utils/format';
+
 export default function EmployeesPage() {
     const depts = useNameMap('departments');
     const columns = useMemo(() => [
@@ -11,6 +12,7 @@ export default function EmployeesPage() {
         { id: 'dept', header: 'Department', accessorFn: (r) => depts.map[firstId(r.department) ?? ''] ?? '—' },
         { accessorKey: 'employmentStatus', header: 'Status', cell: ({ getValue }) => <StatusBadge value={getValue()}/> },
         { accessorKey: 'dailyRate', header: 'Daily Rate', cell: ({ getValue }) => <span className="num">{peso(getValue())}</span> },
+        { accessorKey: 'noOfDaysWork', header: 'Days/Wk', cell: ({ getValue }) => <span className="num">{getValue() != null && getValue() !== '' ? `${getValue()} d` : '—'}</span> },
         { accessorKey: 'leaveCredits', header: 'Leave Credits', cell: ({ getValue }) => <span className="num">{Number(getValue() ?? 0).toFixed(1)}</span> },
         { accessorKey: 'dateHired', header: 'Hired', cell: ({ getValue }) => fmtDate(getValue()) },
         { accessorKey: 'active', header: 'Active', cell: ({ getValue }) => <StatusBadge value={getValue() ? 'Employed' : 'Inactive'}/> },
@@ -21,6 +23,7 @@ export default function EmployeesPage() {
         { key: 'position', label: 'Position', type: 'text' },
         { key: 'department', label: 'Department', type: 'link', linkOptions: depts.list.map((d) => ({ id: d.id, name: d.departmentName })) },
         { key: 'dailyRate', label: 'Daily Rate (₱)', type: 'number', required: true },
+        { key: 'noOfDaysWork', label: 'Working Days per Week/Cutoff', type: 'number', defaultValue: 6 },
         { key: 'employmentStatus', label: 'Employment Status', type: 'select', options: ['Regular', 'Probationary', 'Contractual'], required: true },
         { key: 'dateHired', label: 'Date Hired', type: 'date' },
         { key: 'leaveCredits', label: 'Leave Credits', type: 'number', defaultValue: 5 },
@@ -30,5 +33,5 @@ export default function EmployeesPage() {
         { key: 'pagIbigNo', label: 'Pag-IBIG No.', type: 'text' },
         { key: 'active', label: 'Active', type: 'checkbox', defaultValue: true },
     ], [depts.list]);
-    return <CrudPage table="employees" title="Employees" singular="Employee" description="Personnel records, daily rates and government IDs." columns={columns} fields={fields}/>;
+    return <CrudPage table="employees" title="Employees" singular="Employee" description="Personnel records, daily rates, working days and government IDs." columns={columns} fields={fields}/>;
 }

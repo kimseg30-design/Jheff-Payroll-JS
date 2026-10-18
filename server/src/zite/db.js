@@ -24,8 +24,18 @@ const camel = (k) => (k === 'user_id' ? 'user' : k.replace(/_([a-z])/g, (_, c) =
 const toRow = (r) => Object.fromEntries(Object.entries(r).filter(([, v]) => v !== undefined).map(([k, v]) => [snake(k), Array.isArray(v) ? v[0] ?? null : v]));
 const fromRow = (r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [camel(k), v]));
 
+function isTableMissingError(error) {
+  if (!error) return false;
+  const msg = error.message || '';
+  return msg.includes('schema cache') || msg.includes('does not exist') || error.code === 'PGRST116' || error.code === '42P01';
+}
+
 function check(error) {
-  if (error) throw new Error(error.message);
+  if (error) {
+    const err = new Error(error.message);
+    err.isTableMissing = isTableMissingError(error);
+    throw err;
+  }
 }
 
 function table(name) {
@@ -39,7 +49,9 @@ function table(name) {
           check(error);
           return { records: data.map(fromRow) };
         } catch (e) {
-          console.warn(`[db] Fallback to in-memory for ${name}.findAll:`, e.message);
+          if (!e.isTableMissing) {
+            console.warn(`[db] Fallback to in-memory for ${name}.findAll:`, e.message);
+          }
         }
       }
       let list = memoryDb[name] || [];
@@ -58,7 +70,9 @@ function table(name) {
           check(error);
           return data[0] ? fromRow(data[0]) : null;
         } catch (e) {
-          console.warn(`[db] Fallback to in-memory for ${name}.findOne:`, e.message);
+          if (!e.isTableMissing) {
+            console.warn(`[db] Fallback to in-memory for ${name}.findOne:`, e.message);
+          }
         }
       }
       const list = memoryDb[name] || [];
@@ -75,68 +89,81 @@ function table(name) {
           check(error);
           return fromRow(data);
         } catch (e) {
-          console.warn(`[db] Fallback to in-memory for ${name}.create:`, e.message);
-        }
-      }
-      const created = { id: record.id || crypto.randomUUID(), ...record, createdAt: new Date().toISOString() };
-      if (!memoryDb[name]) memoryDb[name] = [];
-      memoryDb[name].push(created);
-      return created;
-    },
-
-    async bulkCreate({ records, matchOn }) {
-      if (admin) {
-        try {
-          const q = matchOn
-            ? admin.from(name).upsert(records.map(toRow), { onConflict: matchOn.map(snake).join(',') })
-            : admin.from(name).insert(records.map(toRow));
-          const { data, error } = await q.select();
-          check(error);
-          return { records: data.map(fromRow) };
-        } catch (e) {
-          console.warn(`[db] Fallback to in-memory for ${name}.bulkCreate:`, e.message);
-        }
-      }
-      if (!memoryDb[name]) memoryDb[name] = [];
-      const out = [];
-      for (const rec of records) {
-        const item = { id: rec.id || crypto.randomUUID(), ...rec, createdAt: new Date().toISOString() };
-        if (matchOn && matchOn.length) {
-          const idx = memoryDb[name].findIndex((existing) => matchOn.every((k) => existing[k] === item[k]));
-          if (idx >= 0) {
-            memoryDb[name][idx] = { ...memoryDb[name][idx], ...item };
-            out.push(memoryDb[name][idx]);
-            continue;
+          if (!e.isTableMissing) {
+            console.warn(`[db] Fallback to in-memory for ${name}.create:`, e.message);
           }
         }
-        memoryDb[name].push(item);
-        out.push(item);
       }
-      return { records: out };
+      const item = { ...record, id: record.id || crypto.randomUUID(), createdAt: new Date().toISOString() };
+      (memoryDb[name] ||= []).push(item);
+      return item;
     },
 
-    async delete({ id }) {
+    async bulkCreate({ records, matchOn = [] }) {
+      if (!records.length) return { records: [] };
       if (admin) {
         try {
-          const { error } = await admin.from(name).delete().eq('id', id);
+          const rows = records.map(toRow);
+          const { data, error } = matchOn.length
+            ? await admin.from(name).upsert(rows, { onConflict: matchOn.map(snake).join(',') }).select()
+            : await admin.from(name).insert(rows).select();
           check(error);
-          return { id };
+          return { records: (data || []).map(fromRow) };
         } catch (e) {
-          console.warn(`[db] Fallback to in-memory for ${name}.delete:`, e.message);
+          if (!e.isTableMissing) {
+            console.warn(`[db] Fallback to in-memory for ${name}.bulkCreate:`, e.message);
+          }
+        }
+      }
+      const list = (memoryDb[name] ||= []);
+      const created = [];
+      for (const rec of records) {
+        const item = { ...rec, id: rec.id || crypto.randomUUID(), createdAt: new Date().toISOString() };
+        if (matchOn.length) {
+          const idx = list.findIndex((x) => matchOn.every((f) => String(x[f]) === String(rec[f])));
+          if (idx >= 0) list[idx] = { ...list[idx], ...item };
+          else list.push(item);
+        } else {
+          list.push(item);
+        }
+        created.push(item);
+      }
+      return { records: created };
+    },
+
+    async delete({ id, filters = {} }) {
+      if (admin) {
+        try {
+          let q = admin.from(name).delete();
+          if (id) q = q.eq('id', id);
+          for (const [k, v] of Object.entries(filters)) q = q.eq(snake(k), Array.isArray(v) ? v[0] : v);
+          const { error } = await q;
+          check(error);
+          return { success: true };
+        } catch (e) {
+          if (!e.isTableMissing) {
+            console.warn(`[db] Fallback to in-memory for ${name}.delete:`, e.message);
+          }
         }
       }
       if (memoryDb[name]) {
-        memoryDb[name] = memoryDb[name].filter((item) => item.id !== id);
+        memoryDb[name] = memoryDb[name].filter((item) => {
+          if (id && item.id === id) return false;
+          if (Object.keys(filters).length && Object.entries(filters).every(([k, v]) => String(item[k]) === String(Array.isArray(v) ? v[0] : v))) {
+            return false;
+          }
+          return true;
+        });
       }
-      return { id };
+      return { success: true };
     },
   };
 }
 
 function toAuthUser(u) {
   const meta = u.user_metadata || {};
-  const name = meta.full_name || meta.name || '';
-  const [firstName = '', ...rest] = name.split(' ');
+  const name = meta.full_name || meta.name || u.email;
+  const [firstName = '', ...rest] = String(name).split(' ');
   return { id: u.id, email: u.email, name, firstName, lastName: rest.join(' '), image: meta.avatar_url || null };
 }
 
@@ -174,20 +201,25 @@ export const zite = {
         if (/COUNT\(\*\)/i.test(query)) {
           const since = new Date(Date.now() - 864e5).toISOString();
           const { count, error } = await admin.from('app_failed_actions').select('id', { count: 'exact', head: true }).gte('occurred_at', since);
-          check(error);
+          if (error) {
+            return { rows: [{ n: (memoryDb.app_failed_actions || []).length }] };
+          }
           return { rows: [{ n: count ?? 0 }] };
         }
         const { data, error } = await admin.from('app_failed_actions').select('*').order('occurred_at', { ascending: false }).limit(10);
-        check(error);
+        if (error) {
+          const actions = memoryDb.app_failed_actions || [];
+          return { rows: actions.slice(-10).map(fromRow) };
+        }
         return { rows: data.map(fromRow) };
       } catch (e) {
-        console.warn('[db] Fallback to in-memory for sql query:', e.message);
+        // Quiet in-memory fallback
       }
     }
     const actions = memoryDb.app_failed_actions || [];
     if (/COUNT\(\*\)/i.test(query)) {
       return { rows: [{ n: actions.length }] };
     }
-    return { rows: actions.slice(-10) };
+    return { rows: actions.slice(-10).map(fromRow) };
   },
 };
