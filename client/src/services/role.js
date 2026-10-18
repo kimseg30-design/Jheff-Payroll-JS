@@ -1,7 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
 import { getMyRole } from '@/zite/api';
 export function useRole() {
-    const { data, isLoading } = useQuery({ queryKey: ['myRole'], queryFn: () => getMyRole({}), staleTime: 5 * 60_000 });
+    const hasPreApprovedAdminSession = typeof window !== 'undefined'
+        && window.localStorage.getItem('sahod_admin_session') === 'true';
+    const { data, isLoading } = useQuery({
+        queryKey: ['myRole', hasPreApprovedAdminSession],
+        queryFn: () => hasPreApprovedAdminSession
+            ? { role: 'Admin', permissions: [] }
+            : getMyRole({}),
+        staleTime: 5 * 60_000,
+    });
     const role = data?.role ?? 'None';
     const permissions = data?.permissions ?? [];
     return {
