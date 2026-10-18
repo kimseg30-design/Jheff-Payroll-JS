@@ -5,8 +5,8 @@ import '../lib/loadEnv.js';
 import { createClient } from '@supabase/supabase-js';
 import { memoryDb } from '../lib/memoryStore.js';
 
-const supabaseUrl = process.env.SUPABASE_URL || process.env.ZITE_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SECRET_KEY || process.env.ZITE_API_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+const supabaseUrl = process.env.SUPABASE_URL_3 || process.env.SUPABASE_URL || process.env.ZITE_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY_3 || process.env.SUPABASE_SECRET_KEY || process.env.ZITE_API_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY_3 || process.env.SUPABASE_PUBLISHABLE_KEY;
 
 const isConfigured = Boolean(
   supabaseUrl &&
