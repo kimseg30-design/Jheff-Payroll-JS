@@ -4,8 +4,8 @@ import { ShieldAlert } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { useRole } from '../services/role';
 export default function AccessGate({ children }) {
-    const { role, permissions, isLoading } = useRole();
     const { user } = useAuth();
+    const { role, permissions, isLoading } = useRole(user);
     if (isLoading)
         return <CheckingAccess />;
     if (role === 'Admin' || role === 'Viewer' || (role === 'Editor' && permissions.length > 0))
